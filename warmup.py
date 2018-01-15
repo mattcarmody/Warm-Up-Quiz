@@ -6,6 +6,12 @@ import datetime
 import numpy as np
 import openpyxl
 import random
+#import sqlite3
+#import tkinter as tk
+
+# TODO: Web scrape from documentation pages to fill library
+# TODO: Move to SQLite
+# TODO: Add GUI
 
 def callQuestion(jewelRow):
 	# Identify first empty row in the calls log
@@ -34,12 +40,14 @@ def callQuestion(jewelRow):
 	# Store command in calls log (col A) from main sheet (col B)
 	sheet2['A' + str(newCallsRow)].value = sheet1['D' + str(jewelRow)].value
 
-def probModel():	# Build probability model based on date last seen and understanding
+# Build probability model based on date last seen and understanding
+def probModel():
 	components = []
 	
-	# Loop through rows, creating a list of all their weighting integers
+	# Loop through rows, weighting each question
 	for i in range(2, maxrow + 1):
-		# Create integer weight factor based on understanding
+		# Increase probability of topics with a weaker understanding
+		# If question has no history, make it highly probable
 		understanding = sheet1['B' + str(i)].value
 		if understanding == 'l':
 			weight = 3
@@ -49,18 +57,32 @@ def probModel():	# Build probability model based on date last seen and understan
 			weight = 1
 		else:
 			weight = 1000000
-		# Create integer weight factor based on datetime last seen
+		# Increase probability for topics that haven't been seen lately
+		# If question has no history, make it highly probable
 		lastSeen = sheet1['A' + str(i)].value
 		try:
-			diff = datetime.datetime.today().timestamp() - lastSeen.timestamp()
-		except:	# If it is a new entry in the table without a last seen date it is weighted very, very heavily
+			diff = datetime.datetime.today().timestamp()-lastSeen.timestamp()
+		except:	
 			diff = 1000000
 		# Combine weighting for understanding & datetime, then store it
 		component = diff * weight
 		components.append(component)
-	# Create probability array of integer components list
+	# Use weights to create a probability np array
 	prob = np.array(components, dtype=float) / sum(components)
 	return prob
+
+# Add GUI
+# Choice of language/tool via radio buttons
+# Enter integer for rounds (or radio buttons with an ALL option)
+# FRESH: Show prompt and continue button (can later update to an entry form which will be documented for later analysis
+# FRESH: Grid of values from spreadsheet and radio buttons for understanding level and continue button
+# Loop as many times as needed
+# You've finished screen with stats and a quit button 
+
+# SQLite connection
+#conn = sqlite3.connect('tutorial.db')
+#c = conn.cursor()
+# SELECT * FROM tool;  can a variable be used here?
 
 # Prompt user for topic and length of quiz
 tool = input("Which tool? Python or Excel\n")
@@ -83,7 +105,7 @@ print(jewelRows)
 
 # Call question as many times as user requested
 for i in range(quizCount):
-	callQuestion(jewelRows[i])
+    callQuestion(jewelRows[i])
 
 # Save to spreadsheet file once at the end
 wb.save("warmUp" + tool + ".xlsx")
