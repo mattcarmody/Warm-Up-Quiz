@@ -4,108 +4,98 @@
 
 import datetime
 import numpy as np
-import openpyxl
 import random
-#import sqlite3
-#import tkinter as tk
-
-# TODO: Web scrape from documentation pages to fill library
-# TODO: Move to SQLite
-# TODO: Add GUI
-
-def callQuestion(jewelRow):
-	# Identify first empty row in the calls log
-	newCallsRow = sheet2.max_row + 1
-
-	# Read in and print command (col D)
-	print("\nWhat can you tell me about this prompt?")
-	print(sheet1['D' + str(jewelRow)].value + '\n')
-	input("Press enter when you're ready...")
-
-	# Reveal the explanation (col E & F & G)
-	print("")
-	print(sheet1['E' + str(jewelRow)].value)
-	print(sheet1['F' + str(jewelRow)].value)
-	print(sheet1['G' + str(jewelRow)].value)
-	
-	# Prompt for and store user understanding on scale of l/m/h in main sheet (col B) & calls log (col C)
-	understanding = input("\nHow well do you understand this? (l/m/h)")
-	sheet1['B' + str(jewelRow)].value = understanding
-	sheet2['C' + str(newCallsRow)].value = understanding
-	
-	# Update last called column (col A) & calls log (col B) with datetime
-	sheet1['A' + str(jewelRow)].value = datetime.datetime.today()
-	sheet2['B' + str(newCallsRow)].value = datetime.datetime.today()
-	
-	# Store command in calls log (col A) from main sheet (col B)
-	sheet2['A' + str(newCallsRow)].value = sheet1['D' + str(jewelRow)].value
+import sqlite3
 
 # Build probability model based on date last seen and understanding
-def probModel():
-	components = []
-	
-	# Loop through rows, weighting each question
-	for i in range(2, maxrow + 1):
-		# Increase probability of topics with a weaker understanding
-		# If question has no history, make it highly probable
-		understanding = sheet1['B' + str(i)].value
-		if understanding == 'l':
-			weight = 3
-		elif understanding == 'm':
-			weight = 2
-		elif understanding == 'h':
-			weight = 1
-		else:
-			weight = 1000000
-		# Increase probability for topics that haven't been seen lately
-		# If question has no history, make it highly probable
-		lastSeen = sheet1['A' + str(i)].value
-		try:
-			diff = datetime.datetime.today().timestamp()-lastSeen.timestamp()
-		except:	
-			diff = 1000000
-		# Combine weighting for understanding & datetime, then store it
-		component = diff * weight
-		components.append(component)
-	# Use weights to create a probability np array
-	prob = np.array(components, dtype=float) / sum(components)
-	return prob
+def prob_model(cur, tool, num_questions):
+    ids = []
+    calleds = []
+    understandings = []
+    components = []
+    
+    cur.execute("SELECT {}_id, called, understanding FROM {}".format(tool, tool))
+    raw_data = cur.fetchall()    
+    for i in range(len(raw_data)):
+        ids.append(raw_data[i][0])
+        calleds.append(raw_data[i][1])
+        understandings.append(raw_data[i][2])
+    
+    # Loop through rows, weighting each question
+    for i in range(len(ids)):
+        # Increase probability of topics with a weaker understanding
+        # If question has no history, make it highly probable
+        understanding = understandings[i]
+        if understanding == "l":
+            weight = 3
+        elif understanding == "m":
+            weight = 2
+        elif understanding == "h":
+            weight = 1
+        else:
+            weight = 1000000
+        # Increase probability for topics that haven't been seen lately
+        # If question has no history, make it highly probable
+        last_seen = datetime.datetime.strptime(calleds[i], "%Y-%m-%d %H:%M:%S")
+        try:
+            time_diff = datetime.datetime.today().timestamp()-last_seen.timestamp()
+        except:
+            time_diff = 1000000
+        # Combine weighting for understanding & datetime
+        component = time_diff * weight
+        components.append(component)
+    # Use weights to create a probability np array
+    prob_arr = np.array(components, dtype=float) / sum(components)
+    
+    # Select the questions based on the probability array
+    chosen_ids = np.random.choice(ids, size=num_questions, replace=False, p=prob_arr)
+    
+    return chosen_ids
 
-# Add GUI
-# Choice of language/tool via radio buttons
-# Enter integer for rounds (or radio buttons with an ALL option)
-# FRESH: Show prompt and continue button (can later update to an entry form which will be documented for later analysis
-# FRESH: Grid of values from spreadsheet and radio buttons for understanding level and continue button
-# Loop as many times as needed
-# You've finished screen with stats and a quit button 
+def call_question(cur, tool, chosen_id):
+    
+    # Call question and its answer
+    cur.execute("SELECT {}_id, area, concept, explanation, note FROM {} WHERE {}_id={};".format(tool, tool, tool, chosen_id))
+    results = cur.fetchone()
+    chosen_id = results[0]
+    area = results[1]
+    concept = results[2]
+    explanation = results[3]
+    note = results[4]
+    
+    # Print question and wait
+    print("\nWhat can you tell me about this prompt?")
+    print("{}\n{}\n".format(area, concept))
+    input("Press enter when you're ready...\n")
 
-# SQLite connection
-#conn = sqlite3.connect('tutorial.db')
-#c = conn.cursor()
-# SELECT * FROM tool;  can a variable be used here?
+    # Reveal the explanation
+    print(explanation)
+    print(note)
+    
+    # Prompt user for understanding on scale of l/m/h and store
+    new_understanding = input("\nHow well do you understand this? (l/m/h)")
+    now = datetime.datetime.today().strftime("%Y-%m-%d %H:%M:%S")
+    
+    cur.execute("UPDATE {} SET called=?, understanding=? WHERE {}_id=?;".format(tool, tool), (now, new_understanding, chosen_id))
+    cur.execute("INSERT INTO calls(tool, prompt, date, understanding) VALUES(?,?,?,?);", (tool, chosen_id, now, new_understanding))
 
-# Prompt user for topic and length of quiz
-tool = input("Which tool? Python or Excel\n")
-quizCount = int(input("How many questions?\n"))
+def main():
+    # Prompt user for topic and length of quiz
+    tool = input("Which tool? Python or Excel\n").lower()
+    num_questions = int(input("How many questions?\n"))
+    
+    # Connect to SQLite db
+    conn = sqlite3.connect("warmUp.db")
+    cur = conn.cursor()
+    
+    # Select primary keys of questions
+    chosen_ids = prob_model(cur, tool, num_questions)
+    
+    # Call the questions
+    for i in chosen_ids:
+        call_question(cur, tool, i)
 
-# Read in workbook and number of rows
-wb = openpyxl.load_workbook("warmUp" + tool + ".xlsx")
-sheet1 = wb.get_sheet_by_name("main")
-sheet2 = wb.get_sheet_by_name("calls")
-maxrow = sheet1.max_row
-print("Data file currently has " + str(maxrow - 1) + " rows of data.")
+    conn.commit()
 
-# Call function to create probability model
-prob = probModel()
-print(prob)
-rows = list(range(2, maxrow + 1))
-print(rows)
-jewelRows = np.random.choice(rows, size=quizCount, replace=False, p=prob)
-print(jewelRows)
-
-# Call question as many times as user requested
-for i in range(quizCount):
-    callQuestion(jewelRows[i])
-
-# Save to spreadsheet file once at the end
-wb.save("warmUp" + tool + ".xlsx")
+if __name__ == '__main__':
+    main()
