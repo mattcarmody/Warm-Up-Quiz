@@ -36,8 +36,8 @@ def prob_model(cur, tool, num_questions):
             weight = 1000000
         # Increase probability for topics that haven't been seen lately
         # If question has no history, make it highly probable
-        last_seen = datetime.datetime.strptime(calleds[i], "%Y-%m-%d %H:%M:%S")
         try:
+            last_seen = datetime.datetime.strptime(calleds[i], "%Y-%m-%d %H:%M:%S")
             time_diff = datetime.datetime.today().timestamp()-last_seen.timestamp()
         except:
             time_diff = 1000000
