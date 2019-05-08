@@ -4,4 +4,4 @@ The script is written in Python, run in the terminal and stores data in a .xlsx 
 
 
 # Status
-Abandoned when I discovered the beauty that is Anki.
+Abandoned when I discovered the beauty that is [Anki](https://apps.ankiweb.net).
